@@ -78,6 +78,17 @@ bool_flag(
 )
 
 bool_flag(
+    name = "standaloneStorage",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "standaloneStorageSetting",
+    flag_values = {":standaloneStorage": "True"},
+)
+
+bool_flag(
     name = "disableProvisioningProfiles",
     build_setting_default = False,
     visibility = ["//visibility:public"],
@@ -1712,6 +1723,12 @@ ios_extension(
     ],
 )
 
+plist_fragment(
+    name = "StandaloneStorageInfoPlist",
+    extension = "plist",
+    template = "<key>GhostgramStandaloneStorage</key><true/>",
+)
+
 # GHOST: CFBundleDisplayName below is «Ghostgram»
 plist_fragment(
     name = "TelegramInfoPlist",
@@ -1993,14 +2010,20 @@ ios_application(
         ":disableProvisioningProfilesSetting": None,
         "//conditions:default": ":Telegram_xcode_profile" if telegram_use_xcode_managed_codesigning else "@build_configuration//provisioning:Telegram.mobileprovision",
     }),
-    entitlements = ":TelegramEntitlements.entitlements",
+    entitlements = select({
+        ":standaloneStorageSetting": None,
+        "//conditions:default": ":TelegramEntitlements.entitlements",
+    }),
     infoplists = [
         ":TelegramInfoPlist",
         ":BuildNumberInfoPlist",
         ":VersionInfoPlist",
         ":RequiredDeviceCapabilitiesPlist",
         ":UrlTypesInfoPlist",
-    ],
+    ] + select({
+        ":standaloneStorageSetting": [":StandaloneStorageInfoPlist"],
+        "//conditions:default": [],
+    }),
     app_icons = [":GhostgramPrimaryAppIcon"], # GHOST: the ghost is the primary icon
     # GHOST: client branding — Telegram's own icons are not shipped (owner, 2026-10-27), only Ghostgram's
     alternate_icons = [
@@ -2023,6 +2046,7 @@ ios_application(
     ],
     extensions = select({
         ":disableExtensionsSetting": [],
+        ":standaloneStorageSetting": [],
         "//conditions:default": [
             ":ShareExtension",
             ":NotificationContentExtension",

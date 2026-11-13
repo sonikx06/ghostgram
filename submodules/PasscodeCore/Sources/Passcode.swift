@@ -14,12 +14,14 @@ public struct PasscodeConfiguration: Equatable, Sendable {
     public let processRole: ProcessRole
     public let biometricKeychainService: String?
     public let keychainScope: String?
+    public let usesSharedKeychain: Bool
 
-    public init(appGroupIdentifier: String, processRole: ProcessRole, biometricKeychainService: String? = nil, keychainScope: String? = nil) {
+    public init(appGroupIdentifier: String, processRole: ProcessRole, biometricKeychainService: String? = nil, keychainScope: String? = nil, usesSharedKeychain: Bool = true) {
         self.appGroupIdentifier = appGroupIdentifier
         self.processRole = processRole
         self.biometricKeychainService = biometricKeychainService
         self.keychainScope = keychainScope
+        self.usesSharedKeychain = usesSharedKeychain
     }
 }
 
@@ -52,6 +54,7 @@ public final class PasscodeEnvironment: @unchecked Sendable {
             return
         }
         guard configuration.processRole != .mainApp || privateAccessGroup != nil else { throw PasscodeError.unavailable }
+        guard configuration.usesSharedKeychain || configuration.processRole == .mainApp else { throw PasscodeError.unavailable }
         self.configuration = configuration
         self.resolvePrivateAccessGroup = privateAccessGroup
     }
@@ -73,6 +76,9 @@ public final class PasscodeEnvironment: @unchecked Sendable {
         self.mutex.lock()
         defer { self.mutex.unlock() }
         guard let configuration = self.configuration else { throw PasscodeError.unavailable }
+        if !configuration.usesSharedKeychain {
+            return try self.resolvePrivateAccessGroupLocked(configuration)
+        }
         return configuration.appGroupIdentifier
     }
 
@@ -89,7 +95,12 @@ public final class PasscodeEnvironment: @unchecked Sendable {
     public func privateAccessGroup() throws -> String {
         self.mutex.lock()
         defer { self.mutex.unlock() }
-        guard let configuration = self.configuration, configuration.processRole == .mainApp else { throw PasscodeError.unavailable }
+        guard let configuration = self.configuration else { throw PasscodeError.unavailable }
+        return try self.resolvePrivateAccessGroupLocked(configuration)
+    }
+
+    private func resolvePrivateAccessGroupLocked(_ configuration: PasscodeConfiguration) throws -> String {
+        guard configuration.processRole == .mainApp else { throw PasscodeError.unavailable }
         if let group = self.resolvedPrivateAccessGroup { return group }
         guard let group = self.resolvePrivateAccessGroup?(), !group.isEmpty else {
             throw PasscodeError.unavailable
