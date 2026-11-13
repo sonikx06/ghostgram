@@ -1,0 +1,53 @@
+name: Build Ghostgram iOS IPA
+
+on:
+  push:
+    branches: [codex/ghostgram-ios-build]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: |
+          xcode_version=$(python3 -c 'import json; print(json.load(open("versions.json"))["xcode"])')
+          sudo xcode-select -s "/Applications/Xcode_${xcode_version}.app/Contents/Developer"
+          xcodebuild -version
+          df -h .
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: Ghostgram/Features/Vless/Core/go/go.mod
+          cache: false
+
+      - name: Build the VPN core
+        run: bash Ghostgram/Features/Vless/Core/build-core.sh
+
+      - name: Build the iPhone IPA
+        run: |
+          cp build-system/appstore-configuration.json build-system/ghostgram-configuration.json
+          GG_PATCHES_ONLY=1 bash build-system/GGBuild.sh
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          python3 -u build-system/Make/Make.py --overrideXcodeVersion build \
+            --configurationPath build-system/ghostgram-configuration.json \
+            --codesigningInformationPath build-system/fake-codesigning \
+            --configuration release_arm64 --buildNumber "$GITHUB_RUN_NUMBER"
+          mkdir -p "$RUNNER_TEMP/ghostgram"
+          cp bazel-bin/Telegram/Telegram.ipa "$RUNNER_TEMP/ghostgram/Ghostgram.ipa"
+          unzip -tq "$RUNNER_TEMP/ghostgram/Ghostgram.ipa"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Ghostgram-iOS
+          path: ${{ runner.temp }}/ghostgram/Ghostgram.ipa
+          if-no-files-found: error
+          compression-level: 0
