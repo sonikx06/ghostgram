@@ -39,7 +39,7 @@ jobs:
           from pathlib import Path
 
           config = json.loads(Path('build-system/appstore-configuration.json').read_text())
-          config.update(bundle_id='org.ghostgram.sideload', is_appstore_build=False,
+          config.update(bundle_id='org.ghostgram.sideload', is_appstore_build='false',
                         appstore_id='0', enable_siri=False, enable_icloud=False)
           Path('build-system/ghostgram-configuration.json').write_text(json.dumps(config))
           PY
