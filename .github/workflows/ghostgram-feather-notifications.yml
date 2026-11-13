@@ -1,0 +1,48 @@
+name: Package Ghostgram for Feather with notifications
+
+on:
+  push:
+    branches: [codex/ghostgram-feather-push]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Ghostgram-Feather
+          run-id: 43453013843
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ghostgram-input
+
+      - name: Compile and package the notification service
+        run: |
+          set -euo pipefail
+          xcode_version=$(python3 -c 'import json; print(json.load(open("versions.json"))["xcode"])')
+          sudo xcode-select -s "/Applications/Xcode_${xcode_version}.app/Contents/Developer"
+          sdk=$(xcrun --sdk iphoneos --show-sdk-path)
+          service="$RUNNER_TEMP/FeatherNotificationService"
+          xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk" -miphoneos-version-min=15.0 \
+            -fapplication-extension -fobjc-arc -fvisibility=hidden -O2 -Wall -Wextra -Werror \
+            -Xlinker -e -Xlinker _NSExtensionMain -framework Foundation -framework UserNotifications \
+            Telegram/NotificationService/Sources/FeatherNotificationService.m -o "$service"
+          xcrun vtool -show-build "$service"
+          python3 build-system/package-feather-notifications.py \
+            "$RUNNER_TEMP/ghostgram-input/Ghostgram-Feather.ipa" "$service" \
+            "$RUNNER_TEMP/Ghostgram-Feather-Push.ipa" 6
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Ghostgram-Feather-Push
+          path: ${{ runner.temp }}/Ghostgram-Feather-Push.ipa
+          if-no-files-found: error
+          compression-level: 0
