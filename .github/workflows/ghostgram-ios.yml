@@ -36,6 +36,8 @@ jobs:
         run: |
           cp build-system/appstore-configuration.json build-system/ghostgram-configuration.json
           GG_PATCHES_ONLY=1 bash build-system/GGBuild.sh
+          git -C build-system/bazel-rules/rules_apple apply \
+            "$GITHUB_WORKSPACE/build-system/GGPatches/rules_apple-unsigned-ios.patch"
           # Keep the bundled profiles as configuration inputs for Make.py. Omit
           # them from the IPA so it can be signed with a separate Apple account.
           cat >> build-system/GGXcode.bazelrc <<'BAZELRC'
