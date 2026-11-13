@@ -32,11 +32,16 @@ jobs:
       - name: Build the VPN core
         run: bash Ghostgram/Features/Vless/Core/build-core.sh
 
-      - name: Build the iPhone IPA
+      - name: Build the unsigned iPhone IPA
         run: |
           cp build-system/appstore-configuration.json build-system/ghostgram-configuration.json
           GG_PATCHES_ONLY=1 bash build-system/GGBuild.sh
-          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          # Keep the bundled profiles as configuration inputs for Make.py. Omit
+          # them from the IPA so it can be signed with a separate Apple account.
+          cat >> build-system/GGXcode.bazelrc <<'BAZELRC'
+          build --//Telegram:disableProvisioningProfiles
+          build --features=disable_legacy_signing
+          BAZELRC
           python3 -u build-system/Make/Make.py --overrideXcodeVersion build \
             --configurationPath build-system/ghostgram-configuration.json \
             --codesigningInformationPath build-system/fake-codesigning \
@@ -44,6 +49,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ghostgram"
           cp bazel-bin/Telegram/Telegram.ipa "$RUNNER_TEMP/ghostgram/Ghostgram.ipa"
           unzip -tq "$RUNNER_TEMP/ghostgram/Ghostgram.ipa"
+          unzip -Z1 "$RUNNER_TEMP/ghostgram/Ghostgram.ipa" > "$RUNNER_TEMP/ghostgram-contents.txt"
+          grep -Fx 'Payload/Ghostgram.app/Ghostgram' "$RUNNER_TEMP/ghostgram-contents.txt"
+          grep -Fx 'Payload/Ghostgram.app/Frameworks/GGXrayCore.framework/GGXrayCore' "$RUNNER_TEMP/ghostgram-contents.txt"
+          if grep -q '/embedded\.mobileprovision$' "$RUNNER_TEMP/ghostgram-contents.txt"; then
+            echo 'Unexpected provisioning profile in the unsigned IPA' >&2
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
